@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>備品管理システム（爆速スキャン＆即時登録版）</title>
+  <title>備品管理システム（スキャン判定修正版）</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -21,7 +21,7 @@
         <span>📦</span> 備品管理システム
       </h1>
       <span id="sync-status" class="text-xs bg-emerald-800 px-2 py-1 rounded border border-emerald-500">
-        🔄 読込中...
+        読込中...
       </span>
     </div>
   </header>
@@ -32,10 +32,10 @@
     <!-- モード切替タブ -->
     <div class="flex bg-gray-200 p-1 rounded-xl">
       <button id="tab-pc" onclick="switchTab('pc')" class="flex-1 py-2 rounded-lg font-bold text-sm transition-all bg-white text-emerald-800 shadow">
-        💻 PC画面（親：管理）
+        PC画面（管理）
       </button>
       <button id="tab-mobile" onclick="switchTab('mobile')" class="flex-1 py-2 rounded-lg font-bold text-sm transition-all text-gray-600">
-        📱 スマホ画面（弟子：現場）
+        スマホ画面（現場）
       </button>
     </div>
 
@@ -96,7 +96,7 @@
         
         <!-- A. 保管場所(棚札)発行 -->
         <div class="border-t pt-3">
-          <label class="block text-xs font-bold text-emerald-800 mb-1">📍 保管場所（棚札）用</label>
+          <label class="block text-xs font-bold text-emerald-800 mb-1">保管場所（棚札）用</label>
           <div class="flex gap-2">
             <input type="text" id="qr-location-input" placeholder="例：薬箱、洗面台下" class="flex-1 border p-2.5 rounded-lg text-sm">
             <button onclick="generateLocationQR()" class="bg-emerald-800 hover:bg-emerald-900 text-white font-bold px-3 py-2.5 rounded-lg text-xs whitespace-nowrap">
@@ -107,7 +107,7 @@
 
         <!-- B. 備品(荷札)発行 -->
         <div class="border-t pt-3">
-          <label class="block text-xs font-bold text-emerald-800 mb-1">🏷️ 備品（荷札）用</label>
+          <label class="block text-xs font-bold text-emerald-800 mb-1">備品（荷札）用</label>
           <div class="flex gap-2">
             <select id="qr-item-select" class="flex-1 border p-2.5 rounded-lg text-sm bg-white">
               <option value="">備品を選択してください</option>
@@ -166,7 +166,7 @@
           <span>📋</span> 在庫一覧
         </h2>
         <button onclick="fetchDataFromSheet()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-2.5 py-1 rounded-lg border border-gray-300">
-          🔄 手動更新
+          手動更新
         </button>
       </div>
       <div id="inventory-list" class="space-y-3"></div>
@@ -196,7 +196,7 @@
     }
 
     async function fetchDataFromSheet() {
-      setStatus("🔄 読み込み中...");
+      setStatus("読み込み中...");
       try {
         const res = await fetch(GAS_URL);
         const data = await res.json();
@@ -211,7 +211,7 @@
     }
 
     async function syncDataToSheet() {
-      setStatus("⏳ 保存中...");
+      setStatus("保存中...");
       renderItems();
       updateItemDropdown();
       try {
@@ -289,7 +289,7 @@
       });
     }
 
-    // 📍 棚QRコード生成（データ短縮で認識感度を極限までアップ）
+    // 棚QRコード生成
     function generateLocationQR() {
       const locationName = document.getElementById('qr-location-input').value.trim();
       if (!locationName) return alert('保管場所の名前を入力してください');
@@ -299,13 +299,13 @@
       new QRCode(qrContainer, {
         text: `L:${locationName}`,
         width: 180, height: 180,
-        correctLevel: QRCode.CorrectLevel.L // エラー訂正を下げてドットを粗く（＝超読み取りやすく）する
+        correctLevel: QRCode.CorrectLevel.L
       });
-      document.getElementById('qr-location-label').innerText = `📍 保管場所（棚札）：${locationName}`;
+      document.getElementById('qr-location-label').innerText = `保管場所（棚札）：${locationName}`;
       document.getElementById('qr-result-area').classList.remove('hidden');
     }
 
-    // 🏷️ 備品（荷札）QRコード生成
+    // 備品（荷札）QRコード生成
     function generateItemQR() {
       const selectedId = document.getElementById('qr-item-select').value;
       if (!selectedId) return alert('荷札を発行する備品を選択してください');
@@ -323,7 +323,7 @@
         width: 180, height: 180,
         correctLevel: QRCode.CorrectLevel.L
       });
-      document.getElementById('qr-location-label').innerText = `🏷️ 荷札：${item.name} (${item.category})`;
+      document.getElementById('qr-location-label').innerText = `荷札：${item.name} (${item.category})`;
       document.getElementById('qr-result-area').classList.remove('hidden');
     }
 
@@ -416,37 +416,40 @@
       }
     }
 
+    // ---------------- スキャン成功時の処理 ----------------
     function onScanSuccess(decodedText) {
       stopCamera();
+      const text = decodedText.trim();
 
-      // 1. 棚QRの場合 (新形式 L: または旧形式 LOC: に対応)
-      if (decodedText.startsWith('L:') || decodedText.startsWith('LOC:')) {
-        const location = decodedText.replace('L:', '').replace('LOC:', '');
+      // 【修正の要】1. 棚QR（最優先で判定）
+      // 「L:」「LOC:」「l:」「loc:」で始まるか判定
+      if (/^(L:|LOC:)/i.test(text)) {
+        const location = text.replace(/^(L:|LOC:)/i, '');
         activeFilterLocation = location;
-        document.getElementById('filter-banner-text').innerText = `📍 保管場所『${location}』の備品に絞り込みました！`;
+        document.getElementById('filter-banner-text').innerText = `保管場所『${location}』の備品に絞り込みました！`;
         document.getElementById('filter-banner').classList.remove('hidden');
         renderItems();
-        return;
+        return; // ここで確実に終了（新規登録ダイアログには絶対に行かない）
       }
 
       // 2. 荷札QR(独自ID)の場合
       let hitItem = null;
-      if (decodedText.startsWith('I:') || decodedText.startsWith('ITEM:')) {
-        const itemId = decodedText.replace('I:', '').replace('ITEM:', '');
+      if (/^(I:|ITEM:)/i.test(text)) {
+        const itemId = text.replace(/^(I:|ITEM:)/i, '');
         hitItem = items.find(i => i.id === itemId);
       } else {
-        // 3. JANバーコードの場合
-        hitItem = items.find(i => String(i.barcode) === String(decodedText));
+        // 3. 一般のJANバーコードの場合
+        hitItem = items.find(i => String(i.barcode) === String(text));
       }
 
-      // 登録済み商品がある場合
+      // 登録済み商品がある場合 ➔ 在庫+1
       if (hitItem) {
         hitItem.stock = Number(hitItem.stock) + 1;
         syncDataToSheet();
         alert(`【ストック追加】\n「${hitItem.name}」を +1 しました！（現在: ${hitItem.stock}個）`);
       } else {
-        // ✨ 未登録バーコードの場合：その場でスマホから登録！
-        const isRegister = confirm(`未登録のバーコードです！\nJAN: ${decodedText}\n\nこのまま新規登録しますか？`);
+        // 4. 本当に未登録のバーコードの場合のみ新規登録ダイアログ
+        const isRegister = confirm(`未登録のバーコードです！\nJAN: ${text}\n\nこのまま新規登録しますか？`);
         if (isRegister) {
           const name = prompt('備品名を入力してください（例：風邪薬）');
           if (!name) return alert('登録をキャンセルしました。');
@@ -456,16 +459,16 @@
           const newItem = {
             id: Date.now().toString(),
             name: name,
-            category: '医薬品',
+            category: 'その他',
             location: location || '未設定',
-            barcode: decodedText,
-            stock: 1, // スキャンして登録したので在庫1個でスタート
+            barcode: text,
+            stock: 1,
             threshold: 1
           };
 
           items.unshift(newItem);
           syncDataToSheet();
-          alert(`✨「${name}」を新規登録し、在庫数 1個 で保存しました！`);
+          alert(`「${name}」を新規登録し、在庫数 1個 で保存しました！`);
         }
       }
     }
