@@ -7,7 +7,7 @@
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- QRCode.js (棚QR生成) -->
+  <!-- QRCode.js (QR生成) -->
   <script src="https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js"></script>
   <!-- html5-qrcode (カメラライブラリ) -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -70,7 +70,7 @@
           </div>
           <div>
             <label class="block text-xs font-semibold text-gray-500 mb-1">バーコード(JAN) ※任意</label>
-            <input type="text" id="input-barcode" placeholder="数字を手入力またはスキャン" class="w-full border p-2.5 rounded-lg text-sm font-mono">
+            <input type="text" id="input-barcode" placeholder="数字を手入力（空欄時は荷札QRを発行）" class="w-full border p-2.5 rounded-lg text-sm font-mono">
           </div>
           <div class="grid grid-cols-2 gap-2">
             <div>
@@ -88,22 +88,42 @@
         </form>
       </div>
 
-      <!-- 2. 保管場所(棚)用 QRコード発行 -->
-      <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-        <h2 class="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
-          <span>🏷️</span> 保管場所(棚)用 QRコード発行
+      <!-- 2. QRコード（棚札・荷札）発行 -->
+      <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+        <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+          <span>🏷️</span> QRコード発行（棚札・荷札）
         </h2>
-        <div class="flex gap-2 mb-3">
-          <input type="text" id="qr-location-input" placeholder="例：薬箱" class="flex-1 border p-2.5 rounded-lg text-sm">
-          <button onclick="generateLocationQR()" class="bg-emerald-800 hover:bg-emerald-900 text-white font-bold px-4 py-2.5 rounded-lg text-sm whitespace-nowrap">
-            QRコード生成
-          </button>
+        
+        <!-- A. 保管場所(棚札)発行 -->
+        <div class="border-t pt-3">
+          <label class="block text-xs font-bold text-emerald-800 mb-1">📍 保管場所（棚札）用</label>
+          <div class="flex gap-2">
+            <input type="text" id="qr-location-input" placeholder="例：薬箱、洗面台下" class="flex-1 border p-2.5 rounded-lg text-sm">
+            <button onclick="generateLocationQR()" class="bg-emerald-800 hover:bg-emerald-900 text-white font-bold px-3 py-2.5 rounded-lg text-xs whitespace-nowrap">
+              棚QR生成
+            </button>
+          </div>
         </div>
+
+        <!-- B. 備品(荷札)発行 -->
+        <div class="border-t pt-3">
+          <label class="block text-xs font-bold text-emerald-800 mb-1">🏷️ 備品（荷札）用</label>
+          <div class="flex gap-2">
+            <select id="qr-item-select" class="flex-1 border p-2.5 rounded-lg text-sm bg-white">
+              <option value="">備品を選択してください</option>
+            </select>
+            <button onclick="generateItemQR()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2.5 rounded-lg text-xs whitespace-nowrap">
+              荷札QR生成
+            </button>
+          </div>
+        </div>
+
+        <!-- QR出力エリア -->
         <div id="qr-result-area" class="hidden text-center p-4 bg-gray-50 rounded-xl border border-dashed border-gray-300">
           <div id="qrcode-canvas" class="flex justify-center mb-2"></div>
           <p id="qr-location-label" class="font-bold text-gray-700 text-sm mb-3"></p>
           <button onclick="window.print()" class="bg-gray-800 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-black">
-            𖤂 棚札として印刷
+            𖤂 印刷する
           </button>
         </div>
       </div>
@@ -116,7 +136,7 @@
       <!-- スキャナー起動カード -->
       <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 text-center space-y-3">
         <button onclick="startCamera()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 text-base">
-          <span class="text-xl">📷</span> バーコード / 棚QRをスキャン
+          <span class="text-xl">📷</span> JANバーコード / 棚QR / 荷札QR をスキャン
         </button>
         <p class="text-xs text-gray-400">※かざすだけで一瞬でピタッと反応します</p>
       </div>
@@ -155,7 +175,6 @@
   </main>
 
   <script>
-    // 🔗 発行されたGAS URLを連携
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwEdIKJzc7r20JTUMvlfRViQodZ9lhMl0nmWg9c87Djs7LbPVu7g2XFKffpxOLGDTqAiw/exec";
 
     let items = [];
@@ -166,7 +185,6 @@
       fetchDataFromSheet();
     };
 
-    // ---------------- Googleスプレッドシート連携処理 ----------------
     function setStatus(msg, isError = false) {
       const statusEl = document.getElementById('sync-status');
       statusEl.innerText = msg;
@@ -177,7 +195,6 @@
       }
     }
 
-    // スプレッドシートから読み込み (GET)
     async function fetchDataFromSheet() {
       setStatus("🔄 読み込み中...");
       try {
@@ -185,6 +202,7 @@
         const data = await res.json();
         items = data;
         renderItems();
+        updateItemDropdown();
         setStatus("🟢 同期完了");
       } catch (err) {
         console.error(err);
@@ -192,10 +210,10 @@
       }
     }
 
-    // スプレッドシートへ全書き込み (POST)
     async function syncDataToSheet() {
       setStatus("⏳ 保存中...");
-      renderItems(); // 画面を即時更新
+      renderItems();
+      updateItemDropdown();
       try {
         await fetch(GAS_URL, {
           method: "POST",
@@ -209,7 +227,6 @@
       }
     }
 
-    // ---------------- UI & 基本操作 ----------------
     function switchTab(tab) {
       const pcView = document.getElementById('view-pc');
       const mobileView = document.getElementById('view-mobile');
@@ -261,6 +278,19 @@
       }
     }
 
+    // ドロップダウンリストの更新
+    function updateItemDropdown() {
+      const select = document.getElementById('qr-item-select');
+      select.innerHTML = '<option value="">備品を選択してください</option>';
+      items.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.id;
+        opt.innerText = `${item.name} (${item.location})`;
+        select.appendChild(opt);
+      });
+    }
+
+    // 📍 棚QRコード生成
     function generateLocationQR() {
       const locationName = document.getElementById('qr-location-input').value.trim();
       if (!locationName) return alert('保管場所の名前を入力してください');
@@ -271,7 +301,29 @@
         text: `LOC:${locationName}`,
         width: 160, height: 160
       });
-      document.getElementById('qr-location-label').innerText = `📍 保管場所：${locationName}`;
+      document.getElementById('qr-location-label').innerText = `📍 保管場所（棚札）：${locationName}`;
+      document.getElementById('qr-result-area').classList.remove('hidden');
+    }
+
+    // 🏷️ 備品（荷札）QRコード生成
+    function generateItemQR() {
+      const selectedId = document.getElementById('qr-item-select').value;
+      if (!selectedId) return alert('荷札を発行する備品を選択してください');
+
+      const item = items.find(i => i.id === selectedId);
+      if (!item) return;
+
+      const qrContainer = document.getElementById('qrcode-canvas');
+      qrContainer.innerHTML = '';
+      
+      // JANバーコードがある場合はJAN、無い場合は独自ID(ITEM:id)でQR作成
+      const qrData = item.barcode ? item.barcode : `ITEM:${item.id}`;
+
+      new QRCode(qrContainer, {
+        text: qrData,
+        width: 160, height: 160
+      });
+      document.getElementById('qr-location-label').innerText = `🏷️ 荷札：${item.name} (${item.category})`;
       document.getElementById('qr-result-area').classList.remove('hidden');
     }
 
@@ -367,7 +419,7 @@
     function onScanSuccess(decodedText) {
       stopCamera();
 
-      // 棚QRの場合
+      // 1. 棚QRの場合
       if (decodedText.startsWith('LOC:')) {
         const location = decodedText.replace('LOC:', '');
         activeFilterLocation = location;
@@ -377,14 +429,22 @@
         return;
       }
 
-      // JANバーコードの場合
-      const hitItem = items.find(i => String(i.barcode) === String(decodedText));
+      // 2. 荷札QR(独自ID)の場合
+      let hitItem = null;
+      if (decodedText.startsWith('ITEM:')) {
+        const itemId = decodedText.replace('ITEM:', '');
+        hitItem = items.find(i => i.id === itemId);
+      } else {
+        // 3. JANバーコードの場合
+        hitItem = items.find(i => String(i.barcode) === String(decodedText));
+      }
+
       if (hitItem) {
         hitItem.stock = Number(hitItem.stock) + 1;
         syncDataToSheet();
         alert(`【ストック追加】\n「${hitItem.name}」を +1 しました！（現在: ${hitItem.stock}個）`);
       } else {
-        alert(`未登録のバーコードです: ${decodedText}\nPC画面のマスター登録から登録してください！`);
+        alert(`未登録のQR/バーコードです: ${decodedText}\nPC画面からマスター登録を行ってください。`);
       }
     }
   </script>
